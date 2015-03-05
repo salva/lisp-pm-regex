@@ -66,17 +66,18 @@
     (2 (mutate-overwrite-char a))))
 
 (defparameter *bad-scanner-score* 0.1)
-(defparameter *factor-when-matching-good* 2)
-(defparameter *factor-when-matching-bad* 0.5)
-(defparameter *factor-pedigree* 0.1)
+(defparameter *factor-when-matching-good* 2.8)
+(defparameter *factor-when-matching-bad* 0.6)
+(defparameter *factor-pedigree* 0.5)
 (defparameter *factor-length* #(1 1 1 1 0.95 .94 .93 .92 .91 .84 .83 .82 .81 .73 .72 .71 .62 .61 .5 .4 .3 .2 .1 .01))
-(defparameter *factor-length-halve* 8)
+
+(defparameter *factor-length-halve* 1000)
 
 (defun square (a) (* a a))
 
 (defun factor-regex-length (regex)
   (let ((regex-length (length regex)))
-    (exp (* (-0.6931472 / *factor-length-halve*) regex-length))))
+    (exp (* (/ -0.6931472 *factor-length-halve*) regex-length))))
 
 (defun score (regex goods bads)
   (let ((score 1)
