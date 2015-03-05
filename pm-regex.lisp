@@ -1,6 +1,34 @@
 (load "~/quicklisp/setup.lisp")
 (ql:quickload "cl-ppcre")
 
+(defparameter *all-groups*
+  (list "Aarau" "ABE" "Aberdeen" "Adelaide" "Advent" "Albany" "Albuquerque" "Amsterdam" "AmsterdamX" "Argentina" "Arnhem"
+        "Athens" "Atlanta" "AtlanticCity" "Augsburg" "Austin" "Baltimore" "Bandung" "Bangalore" "Bangkok" "Barcelona"
+        "Basel" "Bath" "Beijing" "Belgrade" "Bergen" "Berlin" "BH" "Bielefeld" "Birmingham" "Bordeaux" "Boston" "Boulder"
+        "Braga" "BragancaPaulista" "Brasil" "Brasilia" "Bratislava" "Brisbane" "Bristol" "Brno" "Bruxelles" "Bucharest"
+        "Budapest" "Buffalo" "CaFe" "Cali" "CAMEL" "Campinas" "CapeTown" "Caracas" "Cascavel" "Champaign-Urbana"
+        "Chicago" "Chico" "China" "Chisinau" "Cincinnati" "Cleveland" "Cluj" "Cochin" "Coimbatore" "Coimbra" "Cologne"
+        "Colombo" "Columbus" "Copenhagen" "CorpusChristi" "CostaRica" "Curitiba" "Dahut" "Darmstadt" "DC" "Delhi"
+        "Denver" "DesMoines" "Devon and Cornwall" "DFW" "Dresden" "Duesseldorf" "Edinburgh" "Erlangen" "Fortaleza"
+        "Frankfurt" "Fredericton" "Fukuoka" "Gainesville" "Gdansk" "Geneva" "Glasgow" "Gotanda" "Goteborg" "Granada"
+        "Groningen" "Guatemala" "Guimaraes" "Hamburg" "Hannover" "Hardware" "Harrisburg" "Helsingborg" "Helsinki"
+        "Hokkaido" "HongKong" "Houston" "HudsonValley" "Hyderabad" "Iasi" "Innsbruck" "Israel" "Italia" "Ithaca"
+        "Jakarta" "Jerusalem" "Kaiserslautern" "Kamakura" "Kampala" "Kansai" "KansasCity" "Kathmandu" "Kerman" "Kiel"
+        "Kielce" "Kiev" "Kolkata" "Kostroma" "Krasnodar" "Kushiro" "Kw" "Kyoto" "Leipzig" "Lima" "Linz" "Lisbon" "Logan"
+        "London" "Los_Angeles" "Lukavac" "Lyon" "Madison" "Madras" "Madrid" "Madurai" "Makati" "Marseille" "Melbourne"
+        "MexicoCity" "Milan" "MiltonKeynes" "Milwaukee" "Minsk" "Montréal" "Moscow" "Mumbai" "Munich" "Nagoya"
+        "NewOrleans" "NewTaipeiCity" "Niederrhein" "Niigata" "Nordest" "Northwestengland" "Nottingham" "NY" "Odessa"
+        "Omaha" "OrangeCounty" "Orlando" "Oslo" "Ottawa" "Paderborn" "Paris" "PDX" "Perth" "Petropolis" "Philadelphia"
+        "Phoenix" "Pisa" "Pittsburgh" "Plovdiv" "Plzen" "Porto" "Poznan" "Prague" "Pune" "Purdue" "Qatar" "Quito"
+        "Raleigh" "Recife" "Rehovot" "Rio" "Roederbergweg" "Roma" "RostovOnDon" "Rousse" "Ruhr" "Saarland" "Salem"
+        "SaltLake" "SanCristobal" "SanDiego" "SanFrancisco" "Santa Fe-Los Alamos" "Santiago" "Sao-Paulo" "Seattle"
+        "Sendai" "Seneca" "Seoul" "Shanghai" "Shibuya" "SiliconValley" "Singapore" "Sofia" "Sonoma" "Sophia"
+        "Southampton" "SouthernOregon" "SPb" "StLouis" "Stockholm" "Stuttgart" "Swindon" "Sydney" "Szczecin"
+        "Tallahassee" "Tallinn" "TelAviv" "Tempe" "Terere" "ThamesValley" "ThousandOaks" "Timisoara" "Tokyo" "Tomar"
+        "Torino" "Toronto" "Toulouse" "TriCo" "Tucson" "UKCoordinators" "Ulm" "Vancouver" "Victoria" "Vienna"
+        "Vlaanderen" "Vladivostok" "Voronezh" "Warszawa" "Wellington" "WesternMontana" "Weston" "WhitePlains" "Yokohama"
+        "ZA" "Zagreb" "Zurich"))
+
 (defun pick-with-accumulated-scores (accumulated-scores)
   (let* ((length (length accumulated-scores))
          (top (coerce (aref accumulated-scores (1- length)) 'double-float)))
@@ -66,12 +94,12 @@
     (2 (mutate-overwrite-char a))))
 
 (defparameter *bad-scanner-score* 0.1)
-(defparameter *factor-when-matching-good* 2.8)
-(defparameter *factor-when-matching-bad* 0.6)
+(defparameter *factor-when-matching-good* 2)
+(defparameter *factor-when-matching-bad* 1.1)
 (defparameter *factor-pedigree* 0.5)
 (defparameter *factor-length* #(1 1 1 1 0.95 .94 .93 .92 .91 .84 .83 .82 .81 .73 .72 .71 .62 .61 .5 .4 .3 .2 .1 .01))
 
-(defparameter *factor-length-halve* 1000)
+(defparameter *factor-length-halve* 5)
 
 (defun square (a) (* a a))
 
@@ -89,7 +117,7 @@
               (setf score (* score *factor-when-matching-good*))))
               ;(format t "regex ~A matches ~A, score: ~A~%" regex good score)))
           (dolist (bad bads)
-            (when (cl-ppcre:scan scanner bad)
+            (unless (cl-ppcre:scan scanner bad)
               (setf score (* score *factor-when-matching-bad*)))))
               ;(format t "regex ~A bad-matches ~A, score: ~A~%" regex bad score))))
         (setf score *bad-scanner-score*))
@@ -178,8 +206,9 @@
         (show-n population goods bads 6)
         (evolve-n-impl population-2 accumulated-scores-2 goods bads low high (1- n)))))
 
-(defun evolve-n (population-list goods bads low high n)
-  (let* ((population (make-array 10 :fill-pointer 0 :adjustable t))
+(defun evolve-n (population-list goods low high n)
+  (let* ((bads (set-difference *all-groups* goods))
+         (population (make-array 10 :fill-pointer 0 :adjustable t))
          (accumulated-scores (make-array 10 :fill-pointer 0 :adjustable t)))
     (dolist (string population-list)
       (let ((score (score string goods bads)))
