@@ -29,77 +29,133 @@
         "Vlaanderen" "Vladivostok" "Voronezh" "Warszawa" "Wellington" "WesternMontana" "Weston" "WhitePlains" "Yokohama"
         "ZA" "Zagreb" "Zurich"))
 
-(defun pick-with-accumulated-scores (accumulated-scores)
-  (let* ((length (length accumulated-scores))
-         (top (coerce (aref accumulated-scores (1- length)) 'double-float)))
-    ;(format t "top: ~A, as:~%~A~%~%" top accumulated-scores)
-    (if (> top 0)
-        (let* ((r (random top))
-               (a 0)
-               (b length))
-          (do ()
-              ((>= a b) (values a r top))
-            ;(format t "a: ~A, b ~A~%" a b)
-            (let* ((pivot (floor (/ (+ a b) 2)))
-                   (pivot-accumulated-score (aref accumulated-scores pivot)))
-              (if (< pivot-accumulated-score r)
-                  (setf a (1+ pivot))
-                  (setf b pivot)))))
-        (random length))))
-        
 (defparameter *alphabet*
   "abcdefghijklmnopqrstuvwxyz0123456789 !\"#$%&'()*+'-./:;<=>?@[\\]^_`")
+
+(defparameter *bad-scanner-score* 0.1)
+(defparameter *factor-when-matching-good* 2)
+(defparameter *factor-when-matching-bad* 1.1)
+(defparameter *factor-pedigree* 0.5)
+(defparameter *factor-length-halve* 5)
+
+(defstruct (evolver
+             (:constructor make-evolver-internal))
+  (old-generation (make-array 100 :fill-pointer 0 :adjustable t)
+                  :type (vector))
+  (new-generation (make-array 100 :fill-pointer 0 :adjustable t)
+                  :type (vector))
+  (old-scores (make-array 100 :fill-pointer 0 :adjustable t :element-type 'double-float)
+              :type (vector double-float))
+  (old-accumulated-scores (make-array 100 :fill-pointer 0 :adjustable t :element-type 'double-float)
+              :type (vector double-float))
+  (new-scores (make-array 100 :fill-pointer 0 :adjustable t :element-type 'double-float)
+              :type (vector double-float))
+  (scorer nil :type (function (t) (double-float)))
+  crosser
+  mutator
+  populator)
+
+
+(defun evolver-old-accumulated-scores-reset (evolver)
+  (setf (fill-pointer (evolver-old-accumulated-scores evolver)) 0))
+
+(defun evolver-old-scores-reset (evolver)
+  (evolver-old-accumulated-scores-reset evolver)
+  (setf (fill-pointer (evolver-old-scores evolver)) 0))
+
+(defun evolver-old-generation-reset (evolver)
+  (evolver-old-scores-reset evolver)
+  (setf (fill-pointer (evolver-old-generation evolver)) 0))
+
+(defun evolver-seed (evolver size)
+  (evolver-old-generation-reset evolver)
+  (with-slots (old-generation populator) evolver
+    (do ()
+        ((>= (length old-generation) size))
+      (let ((element (funcall populator)))
+        (when element
+          (vector-push-extend element old-generation))))))
+
+(defun evolver-old-generation-set (evolver population)
+  (evolver-old-generation-reset evolver)
+  (with-slots (old-generation) evolver
+    (dotimes (i (length population))
+      (let ((element (aref population i)))
+        (when element
+          (vector-push-extend element old-generation))))))
+
+(defun make-evolver (&key scorer crosser mutator
+                       populator population population-size)
+  (let ((evolver (make-evolver-internal :scorer scorer :crosser crosser :mutator mutator
+                                        :populator populator)))
+    (if population
+        (evolver-old-generation-set evolver population)
+        (if populator
+            (evolver-seed evolver (or population-size 1000))
+            (error "Both population and populator arguments are missing")))
+    evolver))
+
+(defun evolver-old-scores-init (evolver)
+  (evolver-old-scores-reset evolver)
+  (with-slots (old-generation old-scores scorer) evolver
+    (dotimes (i (length old-generation))
+      (let* ((element (aref old-generation i))
+             (score (funcall scorer element)))
+        (vector-push-extend score old-scores)))))
+
+(defun evolver-old-scores* (evolver)
+  (with-slots (old-scores) evolver
+    (when (= (length old-scores) 0)
+      (evolver-old-scores-init evolver))
+    old-scores))
+
+(defun evolver-old-accumulated-scores-init (evolver)
+  (evolver-old-accumulated-scores-reset evolver)
+  (let ((old-scores (evolver-old-scores* evolver))
+        (old-accumulated-scores (evolver-old-accumulated-scores evolver))
+        (acu 0.0))
+    (dotimes (i (length old-scores))
+      (let ((old-score (aref old-scores i)))
+        (incf acu old-score)
+        (vector-push-extend old-accumulated-scores acu)))))
+
+(defun evolver-old-accumulated-scores* (evolver)
+  (with-slots (old-accumulated-scores) evolver
+    (when (= (length old-accumulated-scores) 0)
+      (evolver-old-accumulated-scores-init evolver))
+    old-accumulated-scores))
+
+
 
 (defun pick-from-alphabet ()
   (let* ((alphabet-length (length *alphabet*))
          (ix (random alphabet-length)))
     (values (aref *alphabet* ix) ix)))
 
-(defun mutate-add-char (a)
-  (let* ((length-a (length a))
-         (ix (random length-a))
-         (start-a (subseq a 0 ix))
-         (middle (vector (pick-from-alphabet)))
-         (end-a (subseq a ix length-a)))
-    (concatenate 'string start-a middle end-a)))
+(defun binary-search-sorted-vector-index (accumulated-scores r)
+  (do ((a 0)
+       (b (length accumulated-scores)))
+      ((>= a b) a)
+    (let ((pivot (floor (/ (+ a b) 2))))
+      (if (> (aref accumulated-scores pivot) r)
+          (setf a (1+ pivot))
+          (setf b pivot)))))
 
-(defun  mutate-overwrite-char (a)
-  (let* ((length-a (length a))
-         (ix (random length-a))
-         (start-a (subseq a 0 ix))
-         (middle (vector (pick-from-alphabet)))
-         (end-a (subseq a (1+ ix) length-a)))
-    (concatenate 'string start-a middle end-a)))
+(defun evolver-pick-old-element-weighted WIP!)
 
-(defun mutate-delete-char (a)
-  (let* ((length-a (length a))
-         (ix (random length-a))
-         (start-a (subseq a 0 ix))
-         (end-a (subseq a (1+ ix) length-a)))
-    (concatenate 'string start-a end-a)))
+(defun vector-top (vector)
+  (let (length ((length vector)))
+    (if (> length 0)
+        (aref vector (1- length))
+        nil)))
 
-(defun cross (a b)
-  (let* ((length-a (length a))
-         (length-b (length b))
-         (cut-a (1+ (random length-a)))
-         (cut-b (random length-b))
-         (start-a (subseq a 0 cut-a))
-         (end-b (subseq b cut-b length-b)))
-    (concatenate 'string start-a (vector (pick-from-alphabet)) end-b)))
+(defun pick-with-accumulated-scores (accumulated-scores)
+  (let ((top (vector-top accumulated-scores)))
+    (if (> top 0)
+        (binary-search-sorted-vector-index accumulated-scores (random top))
+        (random (length accumulated-scores)))))
 
-(defun mutate (a)
-  (ecase (random 3)
-    (0 (mutate-add-char a))
-    (1 (mutate-delete-char a))
-    (2 (mutate-overwrite-char a))))
 
-(defparameter *bad-scanner-score* 0.1)
-(defparameter *factor-when-matching-good* 2)
-(defparameter *factor-when-matching-bad* 1.1)
-(defparameter *factor-pedigree* 0.5)
-(defparameter *factor-length* #(1 1 1 1 0.95 .94 .93 .92 .91 .84 .83 .82 .81 .73 .72 .71 .62 .61 .5 .4 .3 .2 .1 .01))
-
-(defparameter *factor-length-halve* 5)
 
 (defun square (a) (* a a))
 
@@ -215,3 +271,42 @@
         (append-child population accumulated-scores (cons string score))))
     (evolve-n-impl population accumulated-scores goods bads low high n)))
 
+
+
+(defun mutate-add-char (a)
+  (let* ((length-a (length a))
+         (ix (random length-a))
+         (start-a (subseq a 0 ix))
+         (middle (vector (pick-from-alphabet)))
+         (end-a (subseq a ix length-a)))
+    (concatenate 'string start-a middle end-a)))
+
+(defun  mutate-overwrite-char (a)
+  (let* ((length-a (length a))
+         (ix (random length-a))
+         (start-a (subseq a 0 ix))
+         (middle (vector (pick-from-alphabet)))
+         (end-a (subseq a (1+ ix) length-a)))
+    (concatenate 'string start-a middle end-a)))
+
+(defun mutate-delete-char (a)
+  (let* ((length-a (length a))
+         (ix (random length-a))
+         (start-a (subseq a 0 ix))
+         (end-a (subseq a (1+ ix) length-a)))
+    (concatenate 'string start-a end-a)))
+
+(defun cross (a b)
+  (let* ((length-a (length a))
+         (length-b (length b))
+         (cut-a (1+ (random length-a)))
+         (cut-b (random length-b))
+         (start-a (subseq a 0 cut-a))
+         (end-b (subseq b cut-b length-b)))
+    (concatenate 'string start-a (vector (pick-from-alphabet)) end-b)))
+
+(defun mutate (a)
+  (ecase (random 3)
+    (0 (mutate-add-char a))
+    (1 (mutate-delete-char a))
+    (2 (mutate-overwrite-char a))))
